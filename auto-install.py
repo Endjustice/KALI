@@ -5,8 +5,8 @@ from colorama import init, Fore, Style
 
 init(autoreset=True)
 
-REPO_URL = "https://github.com/Endjustice/Kali"
-CLONE_DIR = "kali_repo"
+REPO_URL = "https://github.com/Endjustice/KALI.git"
+CLONE_DIR = "KALI_repo"
 
 def clear(): os.system('cls' if os.name == 'nt' else 'clear')
 
