@@ -62,7 +62,7 @@ def download(url, filename):
     info(f"Downloading with wget: {filename}")
     try:
         run(f"wget --no-check-certificate --continue -O '{filename}' '{url}'")
-    except:
+    except Exception:
         info("Retrying download without resume...")
         run(f"wget --no-check-certificate -O '{filename}' '{url}'")
     size = os.path.getsize(filename)
@@ -112,17 +112,36 @@ def write_launcher(target_dir):
     os.makedirs(os.path.dirname(launcher), exist_ok=True)
     script = f"""#!/data/data/com.termux/files/usr/bin/bash
 set -e
+
+ROOTFS="{target_dir}"
 TMP="{TMP_DIR}"
+
+# 1) Prepare TMP
 mkdir -p "$TMP"
 chmod 1777 "$TMP"
 export TMPDIR="$TMP"
 export PROOT_TMP_DIR="$TMP"
 
+# 2) Disable termux-exec to avoid LD_PRELOAD issues
+export LD_PRELOAD=
+
+# 3) Ensure loader symlink
+mkdir -p "$ROOTFS/lib64"
+[ -e "$ROOTFS/lib64/ld-linux-aarch64.so.1" ] || ln -sf /lib/ld-linux-aarch64.so.1 "$ROOTFS/lib64/ld-linux-aarch64.so.1"
+
+# 4) Choose shell fallback
 SHELL="/bin/bash"
-[ -x "{target_dir}/bin/bash" ] || [ -x "{target_dir}/usr/bin/bash" ] || SHELL="/bin/sh"
+for cand in "/bin/bash" "/usr/bin/bash" "/bin/sh" "/usr/bin/sh"; do
+  if [ -x "$ROOTFS$cand" ]; then
+    SHELL="$cand"; break
+  fi
+done
+
+# 5) Bypass seccomp if kernel blocks ptrace/syscalls
+export PROOT_NO_SECCOMP=1
 
 exec proot \\
-  -S "{target_dir}" \\
+  -S "$ROOTFS" \\
   -b /dev -b /proc -b /sys \\
   -b "$TMP":/tmp \\
   -w /root \\
