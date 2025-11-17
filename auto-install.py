@@ -78,13 +78,11 @@ def extract_rootfs(archive_path, target_dir):
 def banner():
     clear()
     time.sleep(0.5)
-    art = """
-███    ███ ██ ███████ ████████  █████  ██   ██ ███████  █████  ██████  ████████ ███████ 
-████  ████ ██ ██         ██    ██   ██ ██   ██ ██      ██   ██ ██   ██    ██    ██      
-██ ████ ██ ██ ███████    ██    ███████ ███████ █████   ███████ ██████     ██    ███████ 
-██  ██  ██ ██      ██    ██    ██   ██ ██   ██ ██      ██   ██ ██         ██         ██ 
-██      ██ ██ ███████    ██    ██   ██ ██   ██ ███████ ██   ██ ██         ██    ███████ 
-    """
+    art = """ __  __ ___ ____ _____  _    _  _______ __   _  ___
+|  \/  |_ _/ ___|_   _|/ \  | |/ / ____/ /_ / |/ _ \
+| |\/| || |\___ \ | | / _ \ | ' /|  _|| '_ \| | (_) |
+| |  | || | ___) || |/ ___ \| . \| |__| (_) | |\__, |
+|_|  |_|___|____/ |_/_/   \_\_|\_\_____\___/|_|  /_/"""
     print(Fore.YELLOW + Style.BRIGHT + art)
     print(Fore.GREEN + Style.BRIGHT + "MISTAKE619")
 
@@ -99,7 +97,25 @@ def main():
     url, filename = pick_url(variant, arch)
     download(url, filename)
     extract_rootfs(filename, ROOTFS_DIR)
+    write_launcher(ROOTFS_DIR)
     banner()
 
 if __name__ == "__main__":
     main()
+def write_launcher(target_dir):
+    info("Writing launcher 'nh'...")
+    launcher = os.path.expanduser("~/../usr/bin/nh")
+    os.makedirs(os.path.dirname(launcher), exist_ok=True)
+    script = f"""#!/data/data/com.termux/files/usr/bin/bash
+proot -0 \\
+  -r "{target_dir}" \\
+  -b /dev:/dev -b /proc:/proc -b /sys:/sys \\
+  -b "$TMPDIR":/tmp \\
+  -w /root \\
+  /usr/bin/env -i HOME=/root TERM="$TERM" PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+  /bin/bash -l
+"""
+    with open(launcher, "w") as f:
+        f.write(script)
+    run(f"chmod +x '{launcher}'")
+    ok("Launcher installed. Run: nh")
