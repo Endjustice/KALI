@@ -10,6 +10,7 @@ init(autoreset=True)
 
 BASE_URL = "https://old.kali.org/nethunter-images/kali-2025.3/rootfs"
 ROOTFS_DIR = "/data/data/com.termux/files/kali"
+TMP_DIR = "/data/data/com.termux/files/usr/tmp"
 
 def info(msg): print(Fore.CYAN + "[INFO]" + Style.RESET_ALL, msg)
 def ok(msg):   print(Fore.GREEN + "[OK]" + Style.RESET_ALL, msg)
@@ -59,7 +60,11 @@ def pick_url(variant, arch):
 
 def download(url, filename):
     info(f"Downloading with wget: {filename}")
-    run(f"wget --no-check-certificate --continue -O '{filename}' '{url}'")
+    try:
+        run(f"wget --no-check-certificate --continue -O '{filename}' '{url}'")
+    except:
+        info("Retrying download without resume...")
+        run(f"wget --no-check-certificate -O '{filename}' '{url}'")
     size = os.path.getsize(filename)
     if size < 50_000_000:
         err("Downloaded file too small; likely HTML/error instead of archive.")
@@ -79,6 +84,13 @@ def post_extract_fixups(target_dir):
     info("Applying post-extract fixups...")
     for d in ["dev", "proc", "sys", "tmp", "var/tmp", "root"]:
         os.makedirs(os.path.join(target_dir, d), exist_ok=True)
+    # lib64 symlink for loader
+    os.makedirs(os.path.join(target_dir, "lib64"), exist_ok=True)
+    ld_src = os.path.join(target_dir, "lib", "ld-linux-aarch64.so.1")
+    ld_dst = os.path.join(target_dir, "lib64", "ld-linux-aarch64.so.1")
+    if os.path.exists(ld_src) and not os.path.exists(ld_dst):
+        run(f"ln -sf '{ld_src}' '{ld_dst}'")
+    # bin/sbin symlinks
     bin_path = os.path.join(target_dir, "bin")
     sbin_path = os.path.join(target_dir, "sbin")
     usr_bin = os.path.join(target_dir, "usr", "bin")
@@ -87,6 +99,7 @@ def post_extract_fixups(target_dir):
         run(f"ln -sf 'usr/bin' '{bin_path}'")
     if not os.path.exists(sbin_path) and os.path.isdir(usr_sbin):
         run(f"ln -sf 'usr/sbin' '{sbin_path}'")
+    # ensure shells executable
     for sh in ["bin/bash", "usr/bin/bash", "bin/sh", "usr/bin/sh"]:
         p = os.path.join(target_dir, sh)
         if os.path.exists(p):
@@ -98,13 +111,20 @@ def write_launcher(target_dir):
     launcher = os.path.expanduser("~/../usr/bin/nh")
     os.makedirs(os.path.dirname(launcher), exist_ok=True)
     script = f"""#!/data/data/com.termux/files/usr/bin/bash
+set -e
+TMP="{TMP_DIR}"
+mkdir -p "$TMP"
+chmod 1777 "$TMP"
+export TMPDIR="$TMP"
+export PROOT_TMP_DIR="$TMP"
+
 SHELL="/bin/bash"
 [ -x "{target_dir}/bin/bash" ] || [ -x "{target_dir}/usr/bin/bash" ] || SHELL="/bin/sh"
 
 exec proot \\
   -S "{target_dir}" \\
   -b /dev -b /proc -b /sys \\
-  -b "$TMPDIR":/tmp \\
+  -b "$TMP":/tmp \\
   -w /root \\
   --link2symlink --kill-on-exit \\
   "$SHELL" -l
